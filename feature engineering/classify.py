@@ -6,7 +6,7 @@ def train_classifier(X, y):
 	Trains logistic regression on the input data with default parameters.
 	"""
 	from sklearn.linear_model import LogisticRegression
-	cls = LogisticRegression(random_state=0, solver='lbfgs', max_iter=10000)
+	cls = LogisticRegression(random_state=0, solver='lbfgs', max_iter=10000, C=10)
 	cls.fit(X, y)
 	return cls
 

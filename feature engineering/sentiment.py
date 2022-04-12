@@ -1,5 +1,9 @@
 #!/bin/python
 
+from re import S
+from weakref import WeakValueDictionary
+
+
 def read_files(tarfname):
     """Read the training and development data from the sentiment tar file.
     The returned object contains various fields that store sentiment data, such as:
@@ -37,10 +41,18 @@ def read_files(tarfname):
     sentiment.dev_data, sentiment.dev_labels = read_tsv(tar, devname)
     print(len(sentiment.dev_data))
     print("-- transforming data and labels")
-    from sklearn.feature_extraction.text import CountVectorizer
-    sentiment.count_vect = CountVectorizer()
+
+    # from sklearn.feature_extraction.text import CountVectorizer
+    # sentiment.count_vect = CountVectorizer()
+    # sentiment.trainX = sentiment.count_vect.fit_transform(sentiment.train_data)
+    # sentiment.devX = sentiment.count_vect.transform(sentiment.dev_data)
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    sentiment.count_vect = TfidfVectorizer(ngram_range=(1,2), tokenizer=lemmatization)
+    #sentiment.count_vect = TfidfVectorizer(ngram_range=(1,2), tokenizer=stemming)
+    #sentiment.count_vect = TfidfVectorizer(ngram_range=(1,2), preprocessor=preprocess)
     sentiment.trainX = sentiment.count_vect.fit_transform(sentiment.train_data)
     sentiment.devX = sentiment.count_vect.transform(sentiment.dev_data)
+
     from sklearn import preprocessing
     sentiment.le = preprocessing.LabelEncoder()
     sentiment.le.fit(sentiment.train_labels)
@@ -49,6 +61,37 @@ def read_files(tarfname):
     sentiment.devy = sentiment.le.transform(sentiment.dev_labels)
     tar.close()
     return sentiment
+
+def preprocess(text):
+    import re
+    # remove numbers
+    text = re.sub(r'[0-9]', '', text)
+    # remove punctuation
+    text = re.sub(r'[^\w\s]', '', text)
+    # lower case
+    text = text.lower()
+    return text
+
+def lemmatization(text):
+    import nltk
+    from nltk.stem import WordNetLemmatizer
+    wordnet_lemmatizer = WordNetLemmatizer()
+    tokens = nltk.word_tokenize(text)
+    stems = []
+    for item in tokens:
+        stems.append(wordnet_lemmatizer.lemmatize(item))
+    return stems
+
+def stemming(text):
+    import nltk
+    #nltk.download('punkt')
+    from nltk.stem.porter import PorterStemmer
+    tokens = nltk.word_tokenize(text)
+    stems = []
+    for item in tokens:
+        stems.append(PorterStemmer().stem(item))
+    return stems
+
 
 def read_unlabeled(tarfname, sentiment):
     """Reads the unlabeled data.
@@ -98,8 +141,10 @@ def read_tsv(tar, fname):
 
 
 if __name__ == "__main__":
+    
     print("Reading data")
     tarfname = "data/sentiment.tar.gz"
+    
     sentiment = read_files(tarfname)
     print("\nTraining classifier")
     import classify
@@ -107,5 +152,3 @@ if __name__ == "__main__":
     print("\nEvaluating")
     classify.evaluate(sentiment.trainX, sentiment.trainy, cls, 'train')
     classify.evaluate(sentiment.devX, sentiment.devy, cls, 'dev')
-
-

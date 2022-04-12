@@ -9,3 +9,4 @@ After you have installed conda, close any open terminals you might have. Then op
 Then run:
  > python sentiment.py
 
+The feature engineering methods were implemented in read_files function. If you want to change to different preprocessing method, remove the noted code. Basic text preprocess is in preporcess function. Stemming was impelemented in stemming function and lemmatization was implemented in lemmatization, which you can change the tokenizer in TFIDF to the function you need. Regularization parameter C can be changed in classify.py.
