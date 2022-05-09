@@ -275,7 +275,7 @@ class Hmm(object):
     def read_counts(self, corpusfile):
         self.n = 3
         self.emission_counts = defaultdict(int)
-        self.ngram_counts = [defaultdict(int) for i in xrange(self.n)]
+        self.ngram_counts = [defaultdict(int) for i in range(self.n)]
         self.all_states = set()
 
         for line in corpusfile:
@@ -291,12 +291,14 @@ class Hmm(object):
                 ngram = tuple(parts[2:])
                 self.ngram_counts[n-1][ngram] = count
 
-    def get_emission(self):
-        for word, ne_tag in self.emission_counts:
+    def get_emission(self, word, ne_tag):
+        res = self.emission_counts[("_RARE_", ne_tag)]/self.ngram_counts[0][ne_tag,]
+        if (word, ne_tag) in self.emission_counts:
+            #print(self.emission_counts[(word, ne_tag)])
             counts = self.emission_counts[(word, ne_tag)]
-            ne_tag_count = self.ngram_counts[0][ne_tag]
-            emission = counts/ne_tag_count
-            self.emision_param[(word, ne_tag)] = emission
+            res = counts/self.ngram_counts[0][ne_tag,]
+        return res
+
     
     def get_trigram(self, a, b, c):
         trigram_count = self.ngram_counts[2][(a, b, c)]
@@ -305,87 +307,72 @@ class Hmm(object):
         
                 
     def viterbi(self, sentence):
+        pi_viterbi = defaultdict(dict)
+        backpointer = defaultdict(dict)
+
         def find_set(idx):
             if idx in range(1, len(sentence)+1):
                 return self.all_states
             elif idx == 0 or idx == -1:
                 return {'*'}
 
-        def pi_viterbi(k, u, v, sentence):
-            prob_list = defaultdict(float)
-            if k == 0 and u == '*' and v == '*':
-                return (1., '*')
-            else:
-                for w in find_set(k-2):
-                    # params in pi_viterbi
-                    prev_prob = pi_viterbi(k-1, w, u, sentence)[0]
-                    q_prob = self.get_trigram(w, u, v)
-                    e_prob = self.get_emission(sentence[k], v)
-                    prob = prev_prob * q_prob * e_prob
-                    prob_list[(w, u)] = prob
-                max_prob = max(prob.items(), key=lambda x: x[1])
-                return max_prob[1], max_prob[0][0]
-        
-        bp = defaultdict(str)
-        k = len(sentence)
-        U = ''
-        V = ''
-        P = 0.
+        pi_viterbi[0]['*', '*'] = 1.
+        #backpointer[0]['*', '*'] = ''
+        for k in range(1, len(sentence)+1):
+            for u in find_set(k-1):
+                for v in find_set(k):
+                    prob_list = defaultdict(float)
+                    for w in find_set(k - 2):
+                        prev_p = pi_viterbi[k - 1][w, u]
+                        q_p = self.get_trigram(w, u, v)
+                        e_p = self.get_emission(sentence[k-1], v)
+                        prob = prev_p * q_p * e_p
+                        prob_list[(w, u)] = prob
+                    max_p = max(prob_list.items(), key=lambda x: x[1])
+                    pi_viterbi[k][u, v] = max_p[1]
+                    backpointer[k][u, v] = max_p[0][0]
+        n = len(sentence)
+        #print(n)
+        final_probs = defaultdict(float)
+        #print(len(find_set(1)))
+        for u in find_set(n-1):
+            for v in find_set(n):
+                #print(n, u, v)
+                q_p = self.get_trigram(u, v, 'STOP')
+                #print(pi_viterbi[n][u, v] * q_p)
+                final_probs[(u, v)] = pi_viterbi[n][u, v] * q_p
 
-        for idx in range(1, k+1):
-            prob_list = defaultdict(float)
-            for u in find_set(idx-1):
-                for v in find_set(idx):
-                    max_prob, w = pi_viterbi(idx, u, v, sentence)
-                    prob_list[(idx, u, v)] = max_prob
-                    bp[(idx, u, v)] = w
-            max_tag = max(prob.items(), key=lambda x: x[1])
-            #TODO: might have bugs
-            bp[(i, max_tag[0][-2], max_tag[0][-1])] = max_tag[0][-2]
+        max_final = max(final_probs.items(), key=lambda x: x[1])
+        u = max_final[0][0]
+        v = max_final[0][1]
+        tag_predict = defaultdict(str)
+        tag_predict[n-1] = u
+        tag_predict[n] = v
 
-            U = max_tag[0][-2]
-            V = max_tag[0][-1]
-            P = max_tag[1]
-            
-
-        #stores (word:tag) in this whole sentence
-        sentence_with_tag = defaultdict(str)
-
-        sentence_with_tag = list()
-        backpointer = defaultdict(str)
-        tags = defaultdict(str)
-        k = len(sentence)
-        u_glob = ''
-        v_glob = ''
-        glob = 0.
-        for i in range(1, k+1):
-            prob = defaultdict(float)
-            for u in find_set(i-1):
-                for v in find_set(i):
-                    value, w = pi_viterbi(i,u,v,sentence)
-                    prob[(i,u,v)] = value
-                    backpointer[(i,u,v)] = w
-            max_tuple = max(prob.items(), key=lambda x: x[1])
-            backpointer[(i, max_tuple[0][1], max_tuple[0][-1])] = max_tuple[0][1] # bp (k,u,v)= tag w
+        for k in range(n-2, 0, -1):
+            tmp = backpointer[k+2][tag_predict[k+1], tag_predict[k+2]]
+            tag_predict[k] = tmp
+        return tag_predict
     
-            #sentence_with_tag.append(max_tuple[0][-1])
-            u_glob = max_tuple[0][-2]
-            v_glob = max_tuple[0][-1]
-            glob = max_tuple[1]
-            #print ('Max',max_tuple)
-        tags[k-1] = u_glob
-        tags[k] = v_glob
-        for i in range((k-2),0,-1):
-            tag = backpointer[tuple(((i+2),tags[i+1],tags[i+2]))]
-            tags[i]=tag
-    
-        tag_list=list()
-        for i in range(1,len(tags)+1):
-            tag_list.append(tags[i])
-    
-        #tag list as results
-        return tag_list
- 
+    def call_viterbi(self, corpus, output_corpus):
+        sentence = list()
+        line = corpus.readline()
+        while line:
+            fields = line.split(" ")
+            word = fields[0].strip('\n')
+            if not len(word):
+                predict = self.viterbi(sentence)
+                #print(len(predict))
+                #print(len(sentence))
+                for i in range(len(sentence)):
+                    #print(sentence[i] + " " + predict[i])
+                    output_corpus.write(sentence[i] + " " + predict[i+1] +"\n")
+                output_corpus.write("\n")
+                sentence = list()
+                line = corpus.readline()
+                continue
+            sentence.append(word)
+            line = corpus.readline()
 
 def usage():
     print ("""
@@ -395,29 +382,33 @@ def usage():
 
 if __name__ == "__main__":
 
-    if len(sys.argv)!=3: # Expect exactly one argument: the training data file
-        usage()
-        sys.exit(2)
-
-    try:
-        input = open(sys.argv[1],"r")
-        dev = open(sys.argv[2],"r")
-    except IOError:
-        sys.stderr.write("ERROR: Cannot read inputfile %s.\n" % arg)
-        sys.exit(1)
-    
+    # if len(sys.argv)!=3: # Expect exactly one argument: the training data file
+    #     usage()
+    #     sys.exit(2)
+    #
+    # try:
+    #     input = open(sys.argv[1],"r")
+    #     dev = open(sys.argv[2],"r")
+    # except IOError:
+    #     sys.stderr.write("ERROR: Cannot read inputfile %s.\n" % arg)
+    #     sys.exit(1)
+    input = open("gene.counts10", "r")
+    dev = open("gene.dev", "r")
     # Initialize a trigram counter
     counter = Hmm(3)
+    counter.read_counts(input)
     # Collect counts
-    counter.train(input)
+    #counter.train(input)
     # replace infrequent words
     #counter.replace_infrequent()
     # replace improve infrequent words
-    counter.improve_baseline()
+    #counter.improve_baseline()
+    counter.call_viterbi(dev, sys.stdout)
     # Write the counts
     #counter.write_counts(sys.stdout)
     #counter.dev_output(dev, sys.stdout)
-    counter.dev_improve(dev, sys.stdout)
+    #counter.dev_improve(dev, sys.stdout)
+
     
 
 
