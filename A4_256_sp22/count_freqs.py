@@ -82,7 +82,9 @@ class Hmm(object):
         self.n = n
         self.emission_counts = defaultdict(int)
         self.ngram_counts = [defaultdict(int) for i in range(self.n)]
-        self.all_states = set()
+        self.all_states = set() 
+        self.emision_param = defaultdict(float)
+        self.trigram_param = defaultdict(float)
 
     def train(self, corpus_file):
         """
@@ -270,10 +272,7 @@ class Hmm(object):
                         output_corpus.write(word + " " + rare_type +"\n")
             line = corpus.readline()
 
-    
-
     def read_counts(self, corpusfile):
-
         self.n = 3
         self.emission_counts = defaultdict(int)
         self.ngram_counts = [defaultdict(int) for i in xrange(self.n)]
@@ -291,8 +290,102 @@ class Hmm(object):
                 n = int(parts[1].replace("-GRAM",""))
                 ngram = tuple(parts[2:])
                 self.ngram_counts[n-1][ngram] = count
-                
 
+    def get_emission(self):
+        for word, ne_tag in self.emission_counts:
+            counts = self.emission_counts[(word, ne_tag)]
+            ne_tag_count = self.ngram_counts[0][ne_tag]
+            emission = counts/ne_tag_count
+            self.emision_param[(word, ne_tag)] = emission
+    
+    def get_trigram(self, a, b, c):
+        trigram_count = self.ngram_counts[2][(a, b, c)]
+        bigram_count = self.ngram_counts[1][(a, b)]
+        return trigram_count/bigram_count
+        
+                
+    def viterbi(self, sentence):
+        def find_set(idx):
+            if idx in range(1, len(sentence)+1):
+                return self.all_states
+            elif idx == 0 or idx == -1:
+                return {'*'}
+
+        def pi_viterbi(k, u, v, sentence):
+            prob_list = defaultdict(float)
+            if k == 0 and u == '*' and v == '*':
+                return (1., '*')
+            else:
+                for w in find_set(k-2):
+                    # params in pi_viterbi
+                    prev_prob = pi_viterbi(k-1, w, u, sentence)[0]
+                    q_prob = self.get_trigram(w, u, v)
+                    e_prob = self.get_emission(sentence[k], v)
+                    prob = prev_prob * q_prob * e_prob
+                    prob_list[(w, u)] = prob
+                max_prob = max(prob.items(), key=lambda x: x[1])
+                return max_prob[1], max_prob[0][0]
+        
+        bp = defaultdict(str)
+        k = len(sentence)
+        U = ''
+        V = ''
+        P = 0.
+
+        for idx in range(1, k+1):
+            prob_list = defaultdict(float)
+            for u in find_set(idx-1):
+                for v in find_set(idx):
+                    max_prob, w = pi_viterbi(idx, u, v, sentence)
+                    prob_list[(idx, u, v)] = max_prob
+                    bp[(idx, u, v)] = w
+            max_tag = max(prob.items(), key=lambda x: x[1])
+            #TODO: might have bugs
+            bp[(i, max_tag[0][-2], max_tag[0][-1])] = max_tag[0][-2]
+
+            U = max_tag[0][-2]
+            V = max_tag[0][-1]
+            P = max_tag[1]
+            
+
+        #stores (word:tag) in this whole sentence
+        sentence_with_tag = defaultdict(str)
+
+        sentence_with_tag = list()
+        backpointer = defaultdict(str)
+        tags = defaultdict(str)
+        k = len(sentence)
+        u_glob = ''
+        v_glob = ''
+        glob = 0.
+        for i in range(1, k+1):
+            prob = defaultdict(float)
+            for u in find_set(i-1):
+                for v in find_set(i):
+                    value, w = pi_viterbi(i,u,v,sentence)
+                    prob[(i,u,v)] = value
+                    backpointer[(i,u,v)] = w
+            max_tuple = max(prob.items(), key=lambda x: x[1])
+            backpointer[(i, max_tuple[0][1], max_tuple[0][-1])] = max_tuple[0][1] # bp (k,u,v)= tag w
+    
+            #sentence_with_tag.append(max_tuple[0][-1])
+            u_glob = max_tuple[0][-2]
+            v_glob = max_tuple[0][-1]
+            glob = max_tuple[1]
+            #print ('Max',max_tuple)
+        tags[k-1] = u_glob
+        tags[k] = v_glob
+        for i in range((k-2),0,-1):
+            tag = backpointer[tuple(((i+2),tags[i+1],tags[i+2]))]
+            tags[i]=tag
+    
+        tag_list=list()
+        for i in range(1,len(tags)+1):
+            tag_list.append(tags[i])
+    
+        #tag list as results
+        return tag_list
+ 
 
 def usage():
     print ("""
