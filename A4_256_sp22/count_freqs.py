@@ -128,7 +128,6 @@ class Hmm(object):
             gene_count = self.emission_counts.get((word, "I-GENE"), 0)
             o_count = self.emission_counts.get((word, "O"), 0)
             if gene_count + o_count < 5:
-                count += 1
                 self.emission_counts[("_RARE_", "I-GENE")] = self.emission_counts.get(("_RARE_", "I-GENE"), 0)+gene_count
                 self.emission_counts[("_RARE_", "O")] = self.emission_counts.get(("_RARE_", "O"), 0)+o_count
                 if (word, "I-GENE") in self.emission_counts:
@@ -137,14 +136,24 @@ class Hmm(object):
                     del self.emission_counts[(word, "O")]
     
     def improve_baseline(self):
-        emission_copy = copy.copy(self.emission_counts)
-        for word, ne_tag in emission_copy:
-            if self.emission_counts[(word, ne_tag)] < 3:
-                self.emission_counts[("_RARE_", ne_tag)]= self.emission_counts.get(("_RARE_", ne_tag), 0)+self.emission_counts[(word, ne_tag)]
-                del self.emission_counts[(word, ne_tag)]
-            elif self.emission_counts[(word, ne_tag)] < 5:
-                self.emission_counts[("_FEW_", ne_tag)]= self.emission_counts.get(("_FEW_", ne_tag), 0)+self.emission_counts[(word, ne_tag)]
-                del self.emission_counts[(word, ne_tag)]
+        emission_copy = copy.deepcopy(self.emission_counts)
+        for word, _ in emission_copy:
+            gene_count = self.emission_counts.get((word, "I-GENE"), 0)
+            o_count = self.emission_counts.get((word, "O"), 0)
+            if gene_count + o_count < 5:
+                if word.isupper():
+                    self.emission_counts[("_RARE_Upper", "I-GENE")] = self.emission_counts.get(("_RARE_Upper", "I-GENE"), 0)+gene_count
+                    self.emission_counts[("_RARE_Upper", "O")] = self.emission_counts.get(("_RARE_Upper", "O"), 0)+o_count
+                elif word.isdigit():
+                    self.emission_counts[("_RARE_Number", "I-GENE")] = self.emission_counts.get(("_RARE_Number", "I-GENE"), 0)+gene_count
+                    self.emission_counts[("_RARE_Number", "O")] = self.emission_counts.get(("_RARE_Number", "O"), 0)+o_count
+                else:
+                    self.emission_counts[("_RARE_", "I-GENE")] = self.emission_counts.get(("_RARE_", "I-GENE"), 0)+gene_count
+                    self.emission_counts[("_RARE_", "O")] = self.emission_counts.get(("_RARE_", "O"), 0)+o_count
+                if (word, "I-GENE") in self.emission_counts:
+                    del self.emission_counts[(word, "I-GENE")]
+                if (word, "O") in self.emission_counts:
+                    del self.emission_counts[(word, "O")]
 
     def dev_output(self, corpus, output_corpus):
         zero_count = 0
@@ -209,13 +218,22 @@ class Hmm(object):
         else:
             rare_type = "O"
 
-        few_gene = self.emission_counts[("_FEW_", "I-GENE")]/gene_count
-        few_zero = self.emission_counts[("_FEW_","O")]/zero_count
-        few_type = ""
-        if few_gene >= few_zero:
-            few_type = "I-GENE"
+        upper_gene = self.emission_counts[("_RARE_Upper", "I-GENE")]/gene_count
+        upper_zero = self.emission_counts[("_RARE_Upper", "O")]/zero_count
+        upper_type = ""
+        if upper_gene >= upper_zero:
+            upper_type = "I-GENE"
         else:
-            few_type = "O"
+            upper_type = "O"
+
+        number_gene = self.emission_counts[("_RARE_Number", "I-GENE")]/gene_count
+        number_zero = self.emission_counts[("_RARE_Number", "O")]/zero_count
+        number_type = ""
+        if number_gene >= number_zero:
+            number_type = "I-GENE"
+        else:
+            number_type = "O"
+
         line = corpus.readline()
         while line:
             if line:
@@ -244,7 +262,12 @@ class Hmm(object):
                     word_type = "O"
                     output_corpus.write(word + " " + word_type +"\n")
                 else:
-                    output_corpus.write(word + " " + rare_type +"\n")
+                    if word.isupper():
+                        output_corpus.write(word + " " + upper_type +"\n")
+                    elif word.isdigit():
+                        output_corpus.write(word + " " + number_type +"\n")
+                    else:
+                        output_corpus.write(word + " " + rare_type +"\n")
             line = corpus.readline()
 
     
@@ -295,12 +318,13 @@ if __name__ == "__main__":
     # Collect counts
     counter.train(input)
     # replace infrequent words
-    counter.replace_infrequent()
+    #counter.replace_infrequent()
     # replace improve infrequent words
-    #counter.improve_baseline()
+    counter.improve_baseline()
     # Write the counts
     #counter.write_counts(sys.stdout)
-    counter.dev_output(dev, sys.stdout)
+    #counter.dev_output(dev, sys.stdout)
+    counter.dev_improve(dev, sys.stdout)
     
 
 
