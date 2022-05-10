@@ -292,7 +292,7 @@ class Hmm(object):
                 self.ngram_counts[n-1][ngram] = count
 
     def get_emission(self, word, ne_tag):
-        res = self.emission_counts[("_RARE_", ne_tag)]/self.ngram_counts[0][ne_tag,]
+        res = 0
         if (word, ne_tag) in self.emission_counts:
             #print(self.emission_counts[(word, ne_tag)])
             counts = self.emission_counts[(word, ne_tag)]
@@ -325,7 +325,10 @@ class Hmm(object):
                     for w in find_set(k - 2):
                         prev_p = pi_viterbi[k - 1][w, u]
                         q_p = self.get_trigram(w, u, v)
-                        e_p = self.get_emission(sentence[k-1], v)
+                        if max([self.get_emission(sentence[k-1], y) for y in find_set(k)]) == 0:
+                            e_p = self.emission_counts[("_RARE_", v)]/self.ngram_counts[0][v,]
+                        else:
+                            e_p = self.get_emission(sentence[k-1], v)
                         prob = prev_p * q_p * e_p
                         prob_list[(w, u)] = prob
                     max_p = max(prob_list.items(), key=lambda x: x[1])
