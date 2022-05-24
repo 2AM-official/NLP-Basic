@@ -324,9 +324,22 @@ class Hmm(object):
                     prob_list = defaultdict(float)
                     for w in find_set(k - 2):
                         prev_p = pi_viterbi[k - 1][w, u]
+                        #smoothing
+                        # trigram_count = self.ngram_counts[2][(w, u, v)]
+                        # bigram_count = self.ngram_counts[1][(w, u)]
+                        # q_p = trigram_count+1 / bigram_count+len(self.ngram_counts[1])
                         q_p = self.get_trigram(w, u, v)
-                        if max([self.get_emission(sentence[k-1], y) for y in find_set(k)]) == 0:
-                            e_p = self.emission_counts[("_RARE_", v)]/self.ngram_counts[0][v,]
+                        # baseline trigram hmm model
+                        if max([self.get_emission(sentence[k - 1], y) for y in find_set(k)]) == 0:
+                            e_p = self.emission_counts[("_RARE_", v)] / self.ngram_counts[0][v,]
+                        # improvement
+                        # if max([self.get_emission(sentence[k-1], y) for y in find_set(k)]) == 0:
+                        #     if sentence[k-1].isupper():
+                        #         e_p = self.emission_counts[("_RARE_Upper", v)]/self.ngram_counts[0][v,]
+                        #     elif sentence[k-1].isdigit():
+                        #         e_p = self.emission_counts[("_RARE_Number", v)]/self.ngram_counts[0][v,]
+                        #     else:
+                        #         e_p = self.emission_counts[("_RARE_", v)]/self.ngram_counts[0][v,]
                         else:
                             e_p = self.get_emission(sentence[k-1], v)
                         prob = prev_p * q_p * e_p
@@ -385,31 +398,30 @@ def usage():
 
 if __name__ == "__main__":
 
-    # if len(sys.argv)!=3: # Expect exactly one argument: the training data file
-    #     usage()
-    #     sys.exit(2)
-    #
-    # try:
-    #     input = open(sys.argv[1],"r")
-    #     dev = open(sys.argv[2],"r")
-    # except IOError:
-    #     sys.stderr.write("ERROR: Cannot read inputfile %s.\n" % arg)
-    #     sys.exit(1)
-    input = open("gene.counts10", "r")
-    dev = open("gene.dev", "r")
+    if len(sys.argv)!=3: # Expect exactly one argument: the training data file
+        usage()
+        sys.exit(2)
+    
+    try:
+        input = open(sys.argv[1],"r")
+        dev = open(sys.argv[2],"r")
+    except IOError:
+        sys.stderr.write("ERROR: Cannot read inputfile %s.\n" % arg)
+        sys.exit(1)
+
     # Initialize a trigram counter
     counter = Hmm(3)
     counter.read_counts(input)
     # Collect counts
-    #counter.train(input)
+    counter.train(input)
     # replace infrequent words
     #counter.replace_infrequent()
     # replace improve infrequent words
     #counter.improve_baseline()
-    counter.call_viterbi(dev, sys.stdout)
+    # counter.call_viterbi(dev, sys.stdout)
     # Write the counts
     #counter.write_counts(sys.stdout)
-    #counter.dev_output(dev, sys.stdout)
+    counter.dev_output(dev, sys.stdout)
     #counter.dev_improve(dev, sys.stdout)
 
     
